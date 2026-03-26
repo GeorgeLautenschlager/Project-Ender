@@ -74,13 +74,13 @@ Small enough to implement in an afternoon. Complex enough to require real strate
 ### M0 — Repo Scaffold
 *Goal: runnable skeleton, nothing trained*
 
-- [ ] Python package structure (`ender/`)
-- [ ] `DomainAdapter` abstract base class
-- [ ] Ender protocol (JSON schema, local socket server stub)
-- [ ] Thin Python client (for Skirmish)
-- [ ] `SkirmishAdapter` implementation
-- [ ] Skirmish game loop (terminal UI, two human players or scripted)
-- [ ] README pointing at this doc set
+- [x] Python package structure (`project_ender/`)
+- [x] `DomainAdapter` abstract base class
+- [x] Ender protocol (JSON schema, local socket server stub)
+- [x] Thin Python client (for Skirmish)
+- [x] `SkirmishAdapter` implementation
+- [x] Skirmish game loop (terminal UI, two human players or scripted)
+- [x] README pointing at this doc set
 
 **Exit criterion:** Two humans can play Skirmish through the Ender socket.
 

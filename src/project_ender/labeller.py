@@ -19,14 +19,19 @@ log = logging.getLogger(__name__)
 _adapter = SkirmishAdapter()
 
 
-def run_labelling_pass(db_path: str, service: ModelService) -> int:
+def run_labelling_pass(db_path: str, service: ModelService, limit: int = 0) -> int:
     """
-    Label all states in db_path not yet labelled by service.teacher_id.
+    Label states in db_path not yet labelled by service.teacher_id.
+
+    Args:
+        limit: Maximum number of states to label in this pass (0 = no limit).
 
     Returns the number of labels written.
     """
     logger = DecisionLogger(db_path)
     unlabelled = logger.unlabelled_states(service.teacher_id)
+    if limit > 0:
+        unlabelled = unlabelled[:limit]
     log.info(
         "Found %d unlabelled states for teacher %r", len(unlabelled), service.teacher_id
     )
@@ -66,9 +71,15 @@ def main() -> None:
         default="claude",
         help="Model backend spec (default: 'claude')",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Max states to label in this pass (default: 0 = no limit)",
+    )
     args = parser.parse_args()
     service = ModelService(backend=args.backend)
-    written = run_labelling_pass(args.db, service)
+    written = run_labelling_pass(args.db, service, limit=args.limit)
     print(f"Done. {written} labels written to {args.db}")
 
 

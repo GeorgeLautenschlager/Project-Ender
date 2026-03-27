@@ -33,12 +33,17 @@ _ACTION_SPACE: list[Action] = [
         )
         for z in range(NUM_ZONES)
     ],
-    Action(id=14, name="Hold",
-           description="No movement; consolidate in place"),
-    Action(id=15, name="Feint left",
-           description="Move 1 unit from the rightmost occupied zone one step left"),
-    Action(id=16, name="Feint right",
-           description="Move 1 unit from the leftmost occupied zone one step right"),
+    Action(id=14, name="Hold", description="No movement; consolidate in place"),
+    Action(
+        id=15,
+        name="Feint left",
+        description="Move 1 unit from the rightmost occupied zone one step left",
+    ),
+    Action(
+        id=16,
+        name="Feint right",
+        description="Move 1 unit from the leftmost occupied zone one step right",
+    ),
     Action(
         id=17,
         name="Concentrate centre",
@@ -72,12 +77,10 @@ class SkirmishAdapter(DomainAdapter):
         opp = Commander.BLUE if active == Commander.RED else Commander.RED
 
         friendly = [
-            state.units[active][z] / self._MAX_UNITS_PER_ZONE
-            for z in range(NUM_ZONES)
+            state.units[active][z] / self._MAX_UNITS_PER_ZONE for z in range(NUM_ZONES)
         ]
         enemy = [
-            state.units[opp][z] / self._MAX_UNITS_PER_ZONE
-            for z in range(NUM_ZONES)
+            state.units[opp][z] / self._MAX_UNITS_PER_ZONE for z in range(NUM_ZONES)
         ]
         zones_held_f = state.zones_held(active) / NUM_ZONES
         zones_held_e = state.zones_held(opp) / NUM_ZONES
@@ -113,9 +116,7 @@ class SkirmishAdapter(DomainAdapter):
                 ctrl = "ENEMY zone"
             else:
                 ctrl = "contested" if f_units > 0 else "empty"
-            lines.append(
-                f"  Zone {z}: you={f_units}, enemy={e_units} — {ctrl}"
-            )
+            lines.append(f"  Zone {z}: you={f_units}, enemy={e_units} — {ctrl}")
 
         lines += [
             "",

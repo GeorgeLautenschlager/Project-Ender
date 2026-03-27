@@ -12,6 +12,12 @@ Run a Skirmish game from the command line.
 
     # Random bot vs random bot (no server, instant)
     python -m project_ender.skirmish --red random --blue random
+
+    # Oracle (Claude CLI) vs random — watch the oracle play directly
+    python -m project_ender.skirmish --red oracle --blue random
+
+    # Override oracle backend (e.g. for M2+ local models)
+    python -m project_ender.skirmish --blue oracle --oracle-backend claude
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ import random
 import sys
 
 from project_ender.client import EnderClient
+from project_ender.oracle import ModelService
 from project_ender.protocol import DEFAULT_HOST, DEFAULT_PORT, StateRequest
 from project_ender.skirmish.adapter import SkirmishAdapter
 from project_ender.skirmish.game import (
@@ -59,9 +66,7 @@ def _random_player(state: SkirmishState, valid: list[int]) -> int:
     return action
 
 
-def _ender_player(
-    host: str, port: int
-) -> PlayerFn:
+def _ender_player(host: str, port: int) -> PlayerFn:
     """
     Return a player function that delegates decisions to an Ender server.
 
@@ -92,13 +97,39 @@ def _ender_player(
     return player
 
 
-def _make_player(kind: str, host: str, port: int) -> PlayerFn:
+def _oracle_player(backend: str) -> PlayerFn:
+    """Return a player function that calls the oracle model directly via bash."""
+    service = ModelService(backend=backend)
+
+    def player(state: SkirmishState, valid: list[int]) -> int:
+        label = service.query(
+            state_summary=_adapter.encode_state_summary(state),
+            action_space=_adapter.action_space,
+            valid_actions=valid,
+        )
+        active = state.active_commander()
+        print(
+            f"  {active.value} (oracle/{label.teacher}) plays: {label.action_id}"
+            f" — {_adapter.decode_action(label.action_id)}"
+            f"  [conf={label.confidence:.2f}]"
+        )
+        print(f"    Reasoning: {label.reasoning}")
+        return label.action_id
+
+    return player
+
+
+def _make_player(
+    kind: str, host: str, port: int, oracle_backend: str = "claude"
+) -> PlayerFn:
     if kind == "human":
         return _human_player
     if kind == "random":
         return _random_player
     if kind == "ender":
         return _ender_player(host, port)
+    if kind == "oracle":
+        return _oracle_player(oracle_backend)
     raise ValueError(f"Unknown player type: {kind!r}")
 
 
@@ -106,13 +137,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Play a game of Skirmish")
     parser.add_argument(
         "--red",
-        choices=["human", "random", "ender"],
+        choices=["human", "random", "ender", "oracle"],
         default="human",
         help="Red player type (default: human)",
     )
     parser.add_argument(
         "--blue",
-        choices=["human", "random", "ender"],
+        choices=["human", "random", "ender", "oracle"],
         default="human",
         help="Blue player type (default: human)",
     )
@@ -120,10 +151,15 @@ def main() -> None:
     parser.add_argument(
         "--port", type=int, default=DEFAULT_PORT, help="Ender server port"
     )
+    parser.add_argument(
+        "--oracle-backend",
+        default="claude",
+        help="Oracle backend spec for --red/--blue oracle (default: 'claude')",
+    )
     args = parser.parse_args()
 
-    red = _make_player(args.red, args.host, args.port)
-    blue = _make_player(args.blue, args.host, args.port)
+    red = _make_player(args.red, args.host, args.port, args.oracle_backend)
+    blue = _make_player(args.blue, args.host, args.port, args.oracle_backend)
 
     game = SkirmishGame(red_player=red, blue_player=blue)
     result = game.run(verbose=True)

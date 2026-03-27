@@ -89,24 +89,33 @@ Small enough to implement in an afternoon. Complex enough to require real strate
 ### M1 — Oracle Integration
 *Goal: Claude makes decisions in Skirmish*
 
-**Decide before starting:**
-- **Oracle cost controls.** During collection the oracle runs on every decision. Decide on
-  a configurable episode cap or token budget to bound API spend before the first run.
-  A reasonable default: cap collection at 500 episodes (~5,000 states) for the initial
-  training corpus. This fits overnight on local models and keeps Claude API costs bounded
-  during validation runs.
-- **Single-teacher or multi-teacher from the start?** Starting with Claude-only is simpler
-  for M1 validation. The corpus schema should support multiple teachers from day one so
-  local model labelling passes can be added in M2 without a migration.
+**Design decisions made:**
+- **Bash-based model service instead of Anthropic SDK.** All oracle calls go through
+  `ModelService`, which dispatches to model backends via subprocess (Claude CLI) or curl
+  (Ollama, LM Studio — M2+). No Python SDK dependencies for any model. Auth is handled
+  by the CLI itself, not by Python code.
+- **Oracle cost controls.** During corpus labelling the oracle runs on every state.
+  Default cap: 500 episodes (~5,000 states). Use `--games N` in the corpus script to
+  adjust. Corpus generation is decoupled from labelling so you can generate once and
+  label incrementally.
+- **Multi-teacher schema from day one.** The labels table keyed on `(state_id, teacher)`
+  so local model labelling passes can be added in M2 without a migration.
 
-- [ ] Oracle layer (Anthropic API call, prompt template, structured output parser)
-- [ ] Decision logger (SQLite, schema supports multiple teachers: `state_id`, `teacher`,
-      `action_id`, `confidence`, `reasoning`, `timestamp`)
-- [ ] Corpus generation script (scripted self-play → unlabelled states table)
-- [ ] Labelling runner (loads teacher, labels corpus, writes to labels table, unloads)
-- [ ] Consensus builder (merges label sets into soft_targets + agreement_score)
+- [x] `ModelService` — bash-based oracle dispatcher (`oracle/service.py`)
+- [x] `Backend` ABC + `ClaudeCliBackend` — `subprocess` call to `claude -p` (`oracle/backends/`)
+- [x] Prompt template (`oracle/prompts.py`) + structured JSON output parser
+- [x] `DecisionLogger` — SQLite writer, multi-teacher schema (`logger.py`)
+- [x] Corpus generation script — scripted self-play → states table (`corpus.py`)
+- [x] Labelling runner — reads unlabelled states, queries oracle, writes labels (`labeller.py`)
+- [x] Consensus builder — merges label sets into soft_targets + agreement_score (`consensus.py`)
 - [ ] Commander blend (oracle-only mode, confidence threshold stub)
-- [ ] Skirmish human vs. oracle mode
+- [x] Skirmish oracle mode (`--red oracle` / `--blue oracle` in `skirmish/__main__.py`)
+- [x] Server oracle mode (`--oracle` flag in `server.py`)
+
+**Adding a new backend (M2+):**
+Implement `Backend` in `oracle/backends/`, add a branch to `_build_backend()` in
+`oracle/service.py`. The `ModelService`, labeller, corpus, and consensus code are
+unchanged. Ollama and LM Studio will use `curl` via `subprocess`.
 
 **Exit criterion:** Claude plays Skirmish. Decisions are logged to SQLite with reasoning.
 Corpus pipeline runs end-to-end: generate states → label → compute consensus.

@@ -18,6 +18,9 @@ Run a Skirmish game from the command line.
 
     # Override oracle backend (e.g. for M2+ local models)
     python -m project_ender.skirmish --blue oracle --oracle-backend claude
+
+    # Set confidence threshold (logged when oracle falls below it; M2 stub)
+    python -m project_ender.skirmish --red oracle --confidence-threshold 0.7
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ import random
 import sys
 
 from project_ender.client import EnderClient
-from project_ender.oracle import ModelService
+from project_ender.commander import Commander
 from project_ender.protocol import DEFAULT_HOST, DEFAULT_PORT, StateRequest
 from project_ender.skirmish.adapter import SkirmishAdapter
 from project_ender.skirmish.game import (
@@ -97,30 +100,34 @@ def _ender_player(host: str, port: int) -> PlayerFn:
     return player
 
 
-def _oracle_player(backend: str) -> PlayerFn:
-    """Return a player function that calls the oracle model directly via bash."""
-    service = ModelService(backend=backend)
+def _oracle_player(backend: str, confidence_threshold: float = 0.5) -> PlayerFn:
+    """Return a player function that calls the Commander (oracle-only mode)."""
+    commander = Commander(oracle_backend=backend, confidence_threshold=confidence_threshold)
 
     def player(state: SkirmishState, valid: list[int]) -> int:
-        label = service.query(
+        decision = commander.decide(
             state_summary=_adapter.encode_state_summary(state),
             action_space=_adapter.action_space,
             valid_actions=valid,
         )
         active = state.active_commander()
         print(
-            f"  {active.value} (oracle/{label.teacher}) plays: {label.action_id}"
-            f" — {_adapter.decode_action(label.action_id)}"
-            f"  [conf={label.confidence:.2f}]"
+            f"  {active.value} ({decision.source}/{backend}) plays: {decision.action_id}"
+            f" — {_adapter.decode_action(decision.action_id)}"
+            f"  [conf={decision.confidence:.2f}]"
         )
-        print(f"    Reasoning: {label.reasoning}")
-        return label.action_id
+        print(f"    Reasoning: {decision.reasoning}")
+        return decision.action_id
 
     return player
 
 
 def _make_player(
-    kind: str, host: str, port: int, oracle_backend: str = "claude"
+    kind: str,
+    host: str,
+    port: int,
+    oracle_backend: str = "claude",
+    confidence_threshold: float = 0.5,
 ) -> PlayerFn:
     if kind == "human":
         return _human_player
@@ -129,7 +136,7 @@ def _make_player(
     if kind == "ender":
         return _ender_player(host, port)
     if kind == "oracle":
-        return _oracle_player(oracle_backend)
+        return _oracle_player(oracle_backend, confidence_threshold)
     raise ValueError(f"Unknown player type: {kind!r}")
 
 
@@ -156,10 +163,16 @@ def main() -> None:
         default="claude",
         help="Oracle backend spec for --red/--blue oracle (default: 'claude')",
     )
+    parser.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=0.5,
+        help="Commander confidence threshold (default: 0.5; M2 stub)",
+    )
     args = parser.parse_args()
 
-    red = _make_player(args.red, args.host, args.port, args.oracle_backend)
-    blue = _make_player(args.blue, args.host, args.port, args.oracle_backend)
+    red = _make_player(args.red, args.host, args.port, args.oracle_backend, args.confidence_threshold)
+    blue = _make_player(args.blue, args.host, args.port, args.oracle_backend, args.confidence_threshold)
 
     game = SkirmishGame(red_player=red, blue_player=blue)
     result = game.run(verbose=True)

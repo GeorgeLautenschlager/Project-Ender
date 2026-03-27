@@ -108,7 +108,7 @@ Small enough to implement in an afternoon. Complex enough to require real strate
 - [x] Corpus generation script — scripted self-play → states table (`corpus.py`)
 - [x] Labelling runner — reads unlabelled states, queries oracle, writes labels (`labeller.py`)
 - [x] Consensus builder — merges label sets into soft_targets + agreement_score (`consensus.py`)
-- [ ] Commander blend (oracle-only mode, confidence threshold stub)
+- [x] Commander blend (oracle-only mode, confidence threshold stub)
 - [x] Skirmish oracle mode (`--red oracle` / `--blue oracle` in `skirmish/__main__.py`)
 - [x] Server oracle mode (`--oracle` flag in `server.py`)
 

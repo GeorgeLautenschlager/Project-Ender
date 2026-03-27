@@ -10,6 +10,8 @@ from project_ender.adapter import Action
 
 from .backends.base import Backend
 from .backends.claude_cli import ClaudeCliBackend
+from .backends.lmstudio import LMStudioBackend
+from .backends.ollama import OllamaBackend
 from .prompts import build_prompt
 
 
@@ -36,10 +38,20 @@ def _build_backend(spec: str) -> Backend:
     """
     if spec == "claude":
         return ClaudeCliBackend()
+    if spec.startswith("ollama:"):
+        model = spec.split(":", 1)[1]
+        return OllamaBackend(model)
+    if spec.startswith("lmstudio:"):
+        # Format: "lmstudio:<model>" or "lmstudio:<model>@<host:port>"
+        rest = spec.split(":", 1)[1]
+        if "@" in rest:
+            model, hostport = rest.rsplit("@", 1)
+            return LMStudioBackend(model, host=f"http://{hostport}")
+        return LMStudioBackend(rest)
     raise ValueError(
         f"Unknown backend spec: {spec!r}. "
-        "Supported: 'claude'. "
-        "Coming in M2: 'ollama:<model>', 'lmstudio:<model>'."
+        "Supported: 'claude', 'ollama:<model>', "
+        "'lmstudio:<model>' or 'lmstudio:<model>@<host:port>'."
     )
 
 
@@ -70,11 +82,17 @@ class ModelService:
     ) -> OracleLabel:
         """Send a state to the oracle and parse the structured response."""
         prompt = build_prompt(state_summary, action_space, valid_actions)
-        raw = self._backend.call(prompt)
+        raw = self._backend.call(prompt, valid_actions=valid_actions)
         return self._parse(raw, valid_actions)
 
     def _parse(self, raw: str, valid_actions: list[int]) -> OracleLabel:
         text = raw.strip()
+
+        # Strip DeepSeek R1 <think>...</think> blocks
+        if "<think>" in text:
+            import re
+
+            text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
         # Strip markdown code fences if the model wrapped its output
         if text.startswith("```"):
@@ -82,6 +100,13 @@ class ModelService:
             # Drop the opening fence (```json or ```) and closing fence
             inner = lines[1:-1] if lines[-1].strip() == "```" else lines[1:]
             text = "\n".join(inner).strip()
+
+        # Last resort: extract the first JSON object from the response
+        if not text.startswith("{"):
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end > start:
+                text = text[start : end + 1]
 
         try:
             data: dict[str, Any] = json.loads(text)

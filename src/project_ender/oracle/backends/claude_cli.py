@@ -19,7 +19,7 @@ class ClaudeCliBackend(Backend):
     def teacher_id(self) -> str:
         return "claude"
 
-    def call(self, prompt: str) -> str:
+    def call(self, prompt: str, valid_actions: list[int] | None = None) -> str:
         result = subprocess.run(
             ["claude", "-p", prompt],
             capture_output=True,

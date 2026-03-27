@@ -24,8 +24,10 @@ def test_labelling_pass_writes_labels(tmp_path: Path) -> None:
     db = str(tmp_path / "corpus.db")
     generate_corpus(db, n_games=2)
     svc = _mock_service()
-    written = run_labelling_pass(db, svc)
+    written, skipped, hit_limit = run_labelling_pass(db, svc)
     assert written > 0
+    assert skipped == 0
+    assert not hit_limit
     logger = DecisionLogger(db)
     assert logger.label_count() == written
 
@@ -34,9 +36,9 @@ def test_labelling_pass_skips_already_labelled(tmp_path: Path) -> None:
     db = str(tmp_path / "corpus.db")
     generate_corpus(db, n_games=2)
     svc = _mock_service()
-    first = run_labelling_pass(db, svc)
+    first, _, _ = run_labelling_pass(db, svc)
     # Second pass: all states already labelled, nothing to do
-    second = run_labelling_pass(db, svc)
+    second, _, _ = run_labelling_pass(db, svc)
     assert second == 0
     assert DecisionLogger(db).label_count() == first
 
@@ -46,7 +48,7 @@ def test_labelling_pass_independent_per_teacher(tmp_path: Path) -> None:
     generate_corpus(db, n_games=2)
     claude_svc = _mock_service("claude", 14)
     qwen_svc = _mock_service("qwen3_14b", 7)
-    n1 = run_labelling_pass(db, claude_svc)
-    n2 = run_labelling_pass(db, qwen_svc)
+    n1, _, _ = run_labelling_pass(db, claude_svc)
+    n2, _, _ = run_labelling_pass(db, qwen_svc)
     assert n1 == n2
     assert DecisionLogger(db).label_count() == n1 + n2

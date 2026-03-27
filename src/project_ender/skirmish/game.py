@@ -10,9 +10,10 @@ Rules:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Callable, NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     pass
@@ -74,9 +75,7 @@ class SkirmishState:
         """Count zones where commander has strictly more units than opponent."""
         opp = Commander.BLUE if commander == Commander.RED else Commander.RED
         return sum(
-            1
-            for z in range(NUM_ZONES)
-            if self.units[commander][z] > self.units[opp][z]
+            1 for z in range(NUM_ZONES) if self.units[commander][z] > self.units[opp][z]
         )
 
     def active_commander(self) -> Commander:
@@ -149,9 +148,7 @@ def _apply_action(state: SkirmishState, commander: Commander, action_id: int) ->
 def _best_adjacent(units: list[int], target: int, needed: int) -> int | None:
     """Return the adjacent zone index with the most units (>= needed), or None."""
     candidates = [
-        z
-        for z in (target - 1, target + 1)
-        if 0 <= z < NUM_ZONES and units[z] >= needed
+        z for z in (target - 1, target + 1) if 0 <= z < NUM_ZONES and units[z] >= needed
     ]
     if not candidates:
         return None

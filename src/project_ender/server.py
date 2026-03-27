@@ -1,13 +1,15 @@
 """Ender socket server.
 
 M0: accepts StateRequests, returns a random valid action.
-M1: optionally uses the oracle (--oracle flag) to answer with a real model decision.
+M1: optionally uses the Commander (--oracle flag) to answer with a real model decision.
+    The Commander wraps the oracle and exposes a confidence threshold (stub for M2).
 
 Usage:
     python -m project_ender.server
     python -m project_ender.server --host 127.0.0.1 --port 7373
     python -m project_ender.server --oracle
     python -m project_ender.server --oracle --oracle-backend claude
+    python -m project_ender.server --oracle --confidence-threshold 0.7
 """
 
 from __future__ import annotations
@@ -70,36 +72,36 @@ class _EnderHandler(socketserver.StreamRequestHandler):
             )
 
     def _handle_state(self, req: StateRequest) -> ActionResponse:
-        oracle_service = getattr(self.server, "_oracle_service", None)
-        if oracle_service is not None:
-            return self._oracle_decision(req, oracle_service)
+        commander = getattr(self.server, "_commander", None)
+        if commander is not None:
+            return self._commander_decision(req, commander)
         return self._random_decision(req)
 
     def _random_decision(self, req: StateRequest) -> ActionResponse:
         action_id = random.choice(req.valid_actions) if req.valid_actions else 0
         return ActionResponse(action_id=action_id, confidence=0.5, source="policy")
 
-    def _oracle_decision(
-        self, req: StateRequest, oracle_service: object
+    def _commander_decision(
+        self, req: StateRequest, commander: object
     ) -> ActionResponse:
-        from project_ender.oracle import ModelService
+        from project_ender.commander import Commander
         from project_ender.skirmish.adapter import SkirmishAdapter
 
-        assert isinstance(oracle_service, ModelService)
+        assert isinstance(commander, Commander)
         adapter = SkirmishAdapter()
         try:
-            label = oracle_service.query(
+            decision = commander.decide(
                 state_summary=req.state_summary,
                 action_space=adapter.action_space,
                 valid_actions=req.valid_actions,
             )
             return ActionResponse(
-                action_id=label.action_id,
-                confidence=label.confidence,
-                source="oracle",
+                action_id=decision.action_id,
+                confidence=decision.confidence,
+                source=decision.source,
             )
         except Exception as exc:
-            logger.warning("Oracle query failed (%s), falling back to random", exc)
+            logger.warning("Commander decision failed (%s), falling back to random", exc)
             return self._random_decision(req)
 
 
@@ -111,10 +113,12 @@ class EnderServer:
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
         oracle_backend: str | None = None,
+        confidence_threshold: float = 0.5,
     ) -> None:
         self.host = host
         self.port = port
         self._oracle_backend = oracle_backend
+        self._confidence_threshold = confidence_threshold
         self._server: socketserver.ThreadingTCPServer | None = None
 
     def start(self) -> None:
@@ -124,10 +128,17 @@ class EnderServer:
         self._server.daemon_threads = True
 
         if self._oracle_backend is not None:
-            from project_ender.oracle import ModelService
+            from project_ender.commander import Commander
 
-            self._server._oracle_service = ModelService(self._oracle_backend)  # type: ignore[attr-defined]
-            logger.info("Oracle mode: backend=%r", self._oracle_backend)
+            self._server._commander = Commander(  # type: ignore[attr-defined]
+                oracle_backend=self._oracle_backend,
+                confidence_threshold=self._confidence_threshold,
+            )
+            logger.info(
+                "Oracle mode: backend=%r confidence_threshold=%.2f",
+                self._oracle_backend,
+                self._confidence_threshold,
+            )
         else:
             logger.info("Random mode (no oracle configured)")
 
@@ -171,9 +182,20 @@ def main() -> None:
         default="claude",
         help="Oracle backend spec (default: 'claude')",
     )
+    parser.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=0.5,
+        help="Commander confidence threshold (default: 0.5; M2 stub)",
+    )
     args = parser.parse_args()
     oracle_backend = args.oracle_backend if args.oracle else None
-    EnderServer(host=args.host, port=args.port, oracle_backend=oracle_backend).start()
+    EnderServer(
+        host=args.host,
+        port=args.port,
+        oracle_backend=oracle_backend,
+        confidence_threshold=args.confidence_threshold,
+    ).start()
 
 
 if __name__ == "__main__":

@@ -1,20 +1,27 @@
 """
-Commander — decision-making layer sitting above the oracle.
+Commander — decision-making layer sitting above the oracle and policy network.
 
-In M1 (oracle-only mode) the Commander always delegates to the oracle.
-The ``confidence_threshold`` parameter is a stub: when the oracle's confidence
-falls below the threshold the Commander currently logs a warning but still uses
-the oracle response.  In M2 this is the switch-point where the trained policy
-takes over from the oracle.
+Blend logic (M2):
+    if policy is loaded and policy.confidence >= confidence_threshold:
+        use policy   (source: "policy")
+    else:
+        use oracle   (source: "oracle", decision logged for future training)
+
+Without a policy loaded the Commander always delegates to the oracle, which
+was the M1 behaviour.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from project_ender.adapter import Action
 from project_ender.oracle import ModelService
+
+if TYPE_CHECKING:
+    from project_ender.policy.inference import PolicyInference
 
 logger = logging.getLogger(__name__)
 
@@ -26,51 +33,77 @@ class CommanderDecision:
     action_id: int
     confidence: float
     reasoning: str
-    source: str  # "oracle" in M1; "oracle" or "policy" in M2+
+    source: str  # "oracle" or "policy"
 
 
 class Commander:
     """
     Routes each game state to the appropriate decision-maker.
 
-    M1 — oracle-only mode:
-        Always queries the oracle.  If ``confidence < confidence_threshold``
-        a debug message is logged; the oracle answer is still used because
-        there is no policy fallback yet.
+    Oracle-only mode (M1, default):
+        Always queries the oracle.
 
-    M2+ — blend mode (not yet implemented):
-        When oracle confidence >= threshold, use the oracle decision.
-        Below threshold, fall back to the trained policy network.
-        See DELIVERY.md M2: "Commander blend (policy mode, threshold switching)".
+    Blend mode (M2):
+        If a PolicyInference is provided, run the policy first.
+        If policy confidence >= confidence_threshold, use the policy decision.
+        Otherwise fall back to the oracle (and the oracle decision can be
+        logged as new training data for the next corpus cycle).
+
+    Args:
+        oracle_backend:       Backend spec string passed to ModelService.
+        confidence_threshold: Minimum policy confidence to use policy over oracle.
+        policy:               Optional trained PolicyInference for blend mode.
     """
 
     def __init__(
         self,
         oracle_backend: str = "claude",
         confidence_threshold: float = 0.5,
+        policy: PolicyInference | None = None,
     ) -> None:
         self._oracle = ModelService(oracle_backend)
         self.confidence_threshold = confidence_threshold
+        self._policy = policy
 
     def decide(
         self,
         state_summary: str,
         action_space: list[Action],
         valid_actions: list[int],
+        state_vector: list[float] | None = None,
     ) -> CommanderDecision:
-        """Return a decision for the given game state."""
-        label = self._oracle.query(state_summary, action_space, valid_actions)
+        """
+        Return a decision for the given game state.
 
-        if label.confidence < self.confidence_threshold:
-            # M2: fall back to the policy network here.
-            # M1: no policy available — log and use the oracle response anyway.
+        Args:
+            state_summary: Human-readable state description for the oracle prompt.
+            action_space:  Full action menu (used to build oracle prompt).
+            valid_actions: Legal action ids for this state.
+            state_vector:  Float feature vector (required for policy mode).
+        """
+        # Policy path — only available if a policy is loaded and state_vector provided.
+        if self._policy is not None and state_vector is not None:
+            action_id, conf = self._policy.act(state_vector, valid_actions)
+            if conf >= self.confidence_threshold:
+                return CommanderDecision(
+                    action_id=action_id,
+                    confidence=conf,
+                    reasoning="",
+                    source="policy",
+                )
             logger.debug(
-                "Oracle confidence %.2f below threshold %.2f"
-                " — policy fallback not yet implemented (M2 stub)",
-                label.confidence,
+                "Policy confidence %.2f below threshold %.2f — falling back to oracle",
+                conf,
                 self.confidence_threshold,
             )
 
+        # Oracle path (M1 behaviour, or policy fallback).
+        if self._policy is not None and state_vector is None:
+            logger.debug(
+                "Policy loaded but state_vector not provided — using oracle only"
+            )
+
+        label = self._oracle.query(state_summary, action_space, valid_actions)
         return CommanderDecision(
             action_id=label.action_id,
             confidence=label.confidence,

@@ -177,3 +177,26 @@ class DecisionLogger:
     def consensus_count(self) -> int:
         with self._connect() as conn:
             return int(conn.execute("SELECT COUNT(*) FROM consensus").fetchone()[0])
+
+    def training_data(self, min_agreement: float = 0.0) -> list[dict[str, Any]]:
+        """
+        Return rows suitable for behavioural cloning training.
+
+        Each row has:
+            state_vector  — raw bytes (float32 BLOB)
+            soft_targets  — raw bytes (float32 BLOB)
+            agreement_score — float
+
+        Rows with agreement_score < min_agreement are excluded.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.state_vector, c.soft_targets, c.agreement_score
+                FROM states s
+                JOIN consensus c ON c.state_id = s.id
+                WHERE c.agreement_score >= ?
+                """,
+                (min_agreement,),
+            ).fetchall()
+        return [dict(r) for r in rows]

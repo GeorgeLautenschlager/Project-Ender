@@ -33,6 +33,7 @@ class OllamaBackend(Backend):
     """
 
     def __init__(self, model: str, host: str = "http://localhost:11434") -> None:
+        super().__init__()
         self._model = model
         self._host = host
         self._teacher = model.replace("/", "_").replace(":", "_")

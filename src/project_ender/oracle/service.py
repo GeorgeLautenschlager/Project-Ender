@@ -81,7 +81,9 @@ class ModelService:
         valid_actions: list[int],
     ) -> OracleLabel:
         """Send a state to the oracle and parse the structured response."""
-        prompt = build_prompt(state_summary, action_space, valid_actions)
+        prompt = build_prompt(
+            state_summary, action_space, valid_actions, style_hint=self._backend.style_hint
+        )
         raw = self._backend.call(prompt, valid_actions=valid_actions)
         return self._parse(raw, valid_actions)
 

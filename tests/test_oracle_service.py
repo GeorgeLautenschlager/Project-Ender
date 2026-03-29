@@ -22,6 +22,7 @@ def _make_service(raw_response: str) -> ModelService:
     svc = ModelService.__new__(ModelService)
     mock_backend = MagicMock()
     mock_backend.teacher_id = "claude"
+    mock_backend.style_hint = ""
     mock_backend.call.return_value = raw_response
     svc._backend = mock_backend
     return svc

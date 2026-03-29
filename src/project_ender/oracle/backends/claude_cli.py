@@ -15,6 +15,10 @@ class ClaudeCliBackend(Backend):
     Uses: claude -p "<prompt>"
     """
 
+    def __init__(self) -> None:
+        """Initialize Claude CLI backend."""
+        super().__init__()
+
     @property
     def teacher_id(self) -> str:
         return "claude"

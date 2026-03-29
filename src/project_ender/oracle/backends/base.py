@@ -4,9 +4,15 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from project_ender.oracle.prompts import DEFAULT_STYLE_HINT
+
 
 class Backend(ABC):
     """Knows how to send a prompt to one model and return the raw text response."""
+
+    def __init__(self) -> None:
+        """Initialize backend with default style hint."""
+        self.style_hint: str = DEFAULT_STYLE_HINT
 
     @property
     @abstractmethod

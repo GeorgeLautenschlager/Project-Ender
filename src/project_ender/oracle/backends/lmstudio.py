@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import subprocess
 
+from project_ender.oracle.prompts import AGGRESSIVE_STYLE_HINT
+
 from .base import Backend
 
 
@@ -24,9 +26,14 @@ class LMStudioBackend(Backend):
         model: str = "local-model",
         host: str = "http://localhost:1234",
     ) -> None:
+        super().__init__()
         self._model = model
         self._host = host
         self._teacher = f"lmstudio_{model}".replace("/", "_").replace(":", "_")
+
+        # Apply aggressive style hint to models prone to mode collapse
+        if model in ("gpt-oss-20b", "deepseek-r1-distill-qwen-14b"):
+            self.style_hint = AGGRESSIVE_STYLE_HINT
 
     @property
     def teacher_id(self) -> str:

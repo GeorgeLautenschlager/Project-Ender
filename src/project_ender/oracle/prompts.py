@@ -18,22 +18,42 @@ _SYSTEM_INSTRUCTIONS = (
     "Do not include any other text, markdown, or explanation outside the JSON object."
 )
 
+DEFAULT_STYLE_HINT = (
+    "Holding is not inherently safer than acting. "
+    "Evaluate each action on its tactical merit for the current position. "
+    "Passive play loses games."
+)
+
+AGGRESSIVE_STYLE_HINT = (
+    "Play to win. Aggressive positioning and attacks are often correct. "
+    "Do not default to holding unless you have a specific tactical reason to consolidate."
+)
+
 
 def build_prompt(
     state_summary: str,
     action_space: list[Action],
     valid_actions: list[int],
+    style_hint: str = "",
 ) -> str:
-    """Combine system instructions, state summary, and valid actions into a prompt."""
+    """Combine system instructions, state summary, and valid actions into a prompt.
+
+    Args:
+        state_summary: Summary of the game state.
+        action_space: All available actions.
+        valid_actions: IDs of legal actions in the current state.
+        style_hint: Optional strategic guidance to combat mode collapse.
+    """
     valid_set = set(valid_actions)
     action_lines = "\n".join(
         f"  {a.id}: {a.name} — {a.description}"
         for a in action_space
         if a.id in valid_set
     )
-    return (
-        f"{_SYSTEM_INSTRUCTIONS}\n\n"
-        f"---\n\n"
-        f"{state_summary}\n\n"
-        f"Available actions:\n{action_lines}"
-    )
+
+    prompt_parts = [_SYSTEM_INSTRUCTIONS]
+    if style_hint:
+        prompt_parts.append(style_hint)
+    prompt_parts.extend(["---", state_summary, "Available actions:", action_lines])
+
+    return "\n\n".join(prompt_parts)

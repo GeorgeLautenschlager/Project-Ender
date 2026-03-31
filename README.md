@@ -20,7 +20,7 @@ for the milestone roadmap.
 | M2 | Behavioural cloning (policy network) | Planned |
 | M3 | RL fine-tuning | Planned |
 | M4 | Feudal Carriers integration | Planned |
-| M5 | DCS integration | Planned |
+| M5 | DCS integration | In progress |
 
 ---
 
@@ -112,6 +112,98 @@ python -m project_ender.consensus --db corpus.db
 
 ---
 
+## DCS Integration (M5)
+
+Ender can connect to a running DCS World mission via a Lua socket server
+embedded in the `.miz` file and an MCP server that bridges Claude to DCS over
+the network.
+
+### Prerequisites
+
+```bash
+pip install pydcs mcp
+# or, if using poetry:
+poetry install -E dcs
+```
+
+Optional: download [MOOSE.lua](https://github.com/FlightControl-Master/MOOSE/releases)
+and place it at `lua/vendor/MOOSE.lua`. The mission builder will auto-detect and
+embed it. If absent, the mission still works — MOOSE features just won't be
+available in-mission.
+
+### 1. Generate a test mission
+
+```bash
+python -m project_ender.dcs.build_mission --output test.miz
+```
+
+This produces a Caucasus mission with:
+- 2× FA-18C at Batumi (Blue, cold on ramp)
+- 3× T-80UD near Kobuleti (Red)
+- Lua TCP socket server loaded at mission start (port 7374)
+
+### 2. Run the mission in DCS
+
+Copy `test.miz` to your Windows DCS machine and open it. When the mission
+starts, check `DCS.log` or the DCS scripting console for:
+
+```
+[Ender] DCS MCP socket server listening on :7374
+```
+
+Make sure the Windows firewall allows inbound TCP on port 7374.
+
+### 3. Start the MCP server
+
+On your dev machine (Linux/Mac), point the MCP server at the DCS host:
+
+```bash
+DCS_HOST=192.168.1.x python -m project_ender.dcs.mcp_server
+```
+
+This starts a stdio MCP server exposing two tools:
+
+| Tool | Description |
+|------|-------------|
+| `get_mission_state()` | Returns all live units (name, type, coalition, lat/lon, heading) and airbases |
+| `spawn_flight(airport, aircraft_type, count, callsign, coalition)` | Spawns a flight cold on the ramp at the given airbase |
+
+### 4. Connect from Claude
+
+Add the server to your MCP client config (e.g. Claude Desktop `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "dcs-ender": {
+      "command": "python",
+      "args": ["-m", "project_ender.dcs.mcp_server"],
+      "env": { "DCS_HOST": "192.168.1.x" }
+    }
+  }
+}
+```
+
+Then ask Claude to `get_mission_state()` to see what's on the map, or
+`spawn_flight(airport="Batumi")` to put more aircraft on the ramp.
+
+### Architecture
+
+```
+┌──────────────┐         TCP :7374         ┌──────────────────┐
+│  MCP Server  │◄────────────────────────► │  DCS World       │
+│  (Python,    │    JSON lines over LAN    │  (Windows PC)    │
+│   Linux)     │                           │                  │
+└──────┬───────┘                           │  dcs_mcp_server  │
+       │ stdio                             │  .lua (embedded) │
+┌──────┴───────┐                           └──────────────────┘
+│  Claude      │
+│  (MCP client)│
+└──────────────┘
+```
+
+---
+
 ## Project Layout
 
 ```
@@ -125,10 +217,17 @@ src/project_ender/
 ├── corpus.py           # Corpus generation: scripted self-play → states table
 ├── labeller.py         # Labelling runner: queries oracle, writes labels
 ├── consensus.py        # Consensus builder: merges labels into soft targets
-└── skirmish/
-    ├── adapter.py      # SkirmishAdapter (encode_state, decode_action, compute_reward)
-    ├── game.py         # Game state, rules, step(), terminal UI
-    └── __main__.py     # CLI entry point
+├── skirmish/
+│   ├── adapter.py      # SkirmishAdapter (encode_state, decode_action, compute_reward)
+│   ├── game.py         # Game state, rules, step(), terminal UI
+│   └── __main__.py     # CLI entry point
+└── dcs/
+    ├── mission_builder.py  # PyDCS: generates .miz with embedded Lua server
+    └── mcp_server.py       # MCP server: get_state + spawn_flight tools
+lua/
+├── dcs_mcp_server.lua      # Lua TCP server embedded in missions
+└── vendor/
+    └── MOOSE.lua            # (download separately — not committed)
 ```
 
 ---

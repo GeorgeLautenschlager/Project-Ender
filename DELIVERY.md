@@ -170,9 +170,19 @@ Ideally produces at least one emergent behaviour worth documenting.
 ### M5 — DCS Integration
 *Goal: prove the protocol works in Lua*
 
-- [ ] Lua client (MOOSE-compatible, socket or HTTP)
-- [ ] DCS mission adapter (state from DCS scripting API, action space defined)
-- [ ] Oracle commander running in a test mission
+**Architecture note:** M5 uses two complementary bridges:
+- **MCP server** (`src/project_ender/dcs/mcp_server.py`) — Claude interactive use (query + command)
+- **Ender protocol** (future) — automated corpus generation, same oracle pipeline as Skirmish
+
+**Infrastructure:**
+- [x] PyDCS mission builder — generates `.miz` with MOOSE + socket server embedded
+- [x] Lua TCP socket server embedded in mission — `get_state` and `spawn_flight` commands
+- [x] Python MCP server — `get_mission_state()` and `spawn_flight()` tools over LAN
+
+**Remaining:**
+- [ ] Field-test: run mission on Windows PC, verify Lua server starts, MCP server connects
+- [ ] `DCSAdapter` — subclass `DomainAdapter` for corpus pipeline integration
+- [ ] Oracle commander running in a test mission (connects via Ender protocol port 7373)
 
 **Exit criterion:** Claude commands a DCS mission. Logged decisions match observable
 in-game behaviour.
